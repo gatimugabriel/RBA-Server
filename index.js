@@ -1,6 +1,13 @@
 import express from 'express'
 import cors from 'cors'
 import morgan from 'morgan'
+import dotenv from 'dotenv'
+import bcrypt, { hash } from 'bcrypt'
+
+import { connectToMongoDB } from './dbConfig.js'
+import { User } from './models.js'
+
+dotenv.config()
 
 const app = express()
 
@@ -54,26 +61,85 @@ app.get('/hello', (req, res) => {
 })
 
 //  signing route
-app.post('/signin', (req, res) => {
+app.post('/signin', async (req, res) => {
     const { email, password } = req.body
 
-    //  find user
-    const user = users.filter(user => email.toLowerCase() === user.email)
+    const user = await User.findOne({
+        where: { email }
+    })
 
-    if (!user || password !== user[0]?.password) {
+    //  check credentials
+    if (!user || ! await bcrypt.compare(password, user.password)) {
         return res.status(400).json({
-            message: "Invalid Credentials"
+            success: 'false',
+            message: 'Invalid Credentials'
         })
     }
 
     res.status(200).json({
-        message: 'success',
         user
     })
 })
 
 
+//  create account
+app.post('/signup', async (req, res) => {
+    const { fullName, email, phoneNumber, password, role, token, ghUsername } = req.body
+
+    try {
+        const user = await User.findOne({
+            where: { email }
+        })
+
+        //  check credentials
+        if (user) {
+
+            console.log('user found', user);
+
+            return res.status(409).json({
+                success: 'false',
+                message: 'Email already in use'
+            })
+        }
+
+        console.log('No user found', user);
+
+        const hashedPassword = await hash(password, 10)
+
+        const newUser = await User.create({
+            fullName,
+            email,
+            phoneNumber,
+            password: hashedPassword,
+            role,
+            token,
+            ghUsername
+        })
+
+        res.status(201).json({
+            success: true,
+            message: 'User created successfully',
+            data: newUser
+        })
+
+    } catch (error) {
+        console.error(error);
+        res.status(400).json({
+            success: false,
+            message: 'Error occured while creating account',
+        })
+    }
+})
+
+// START SERVER & CONNECT TO DB
 app.listen(3000, () => {
     console.log('Server running');
+
+    connectToMongoDB().then(() => {
+        console.log('Connected to DB');
+    }).catch(err => {
+        console.error('error', err);
+        process.exit(1)
+    })
 })
 
