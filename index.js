@@ -3,6 +3,7 @@ import cors from 'cors'
 import morgan from 'morgan'
 import dotenv from 'dotenv'
 import bcrypt, { hash } from 'bcrypt'
+import jwt from 'jsonwebtoken'
 
 import { connectToMongoDB } from './dbConfig.js'
 import { User } from './models.js'
@@ -10,40 +11,6 @@ import { User } from './models.js'
 dotenv.config()
 
 const app = express()
-
-const users = [
-    {
-        fullName: 'Antony Torotich',
-        phoneNumber: 700111222,
-        email: '1@1.com',
-        password: '1',
-        role: 1,
-        token: 'sghsdfjlsdfismbfsfsd',
-
-        ghUsername: 'developer-ke'
-    },
-    {
-        fullName: 'Latiphar Mmella',
-        phoneNumber: 700222111,
-        email: '2@2.com',
-        password: '2',
-        role: 2,
-        token: 'sghsdfjlsdfismbfsfsd',
-
-        ghUsername: 'mmella-code'
-    },
-    {
-        fullName: 'Gabriel Gatimu',
-        phoneNumber: 700121212,
-        email: '3@3.com',
-        password: '3',
-        role: 3,
-        token: 'sghsdfjlsdfismbfsfsd',
-
-        ghUsername: 'gatimugabriel'
-    }
-
-]
 
 // allow clients to communicate with the server 
 app.use(cors())
@@ -56,29 +23,42 @@ app.use(express.urlencoded({ extended: false }))
 app.use(morgan('dev'))
 
 // ---- Routes ----- //
-app.get('/hello', (req, res) => {
-    res.send('hello world')
-})
 
-//  signing route
+//  signing 
 app.post('/signin', async (req, res) => {
     const { email, password } = req.body
 
-    const user = await User.findOne({
-        where: { email }
-    })
+    try {
+        const user = await User.findOne({ email })
 
-    //  check credentials
-    if (!user || ! await bcrypt.compare(password, user.password)) {
-        return res.status(400).json({
-            success: 'false',
-            message: 'Invalid Credentials'
+        //  check credentials
+        if (!user || ! await bcrypt.compare(password, user.password)) {
+            return res.status(400).json({
+                success: 'false',
+                message: 'Invalid Credentials'
+            })
+        }
+
+        // generate jwt token
+        const userId = user._id;
+        const role = user.role
+
+        const accessToken = await jwt.sign(
+            { userId, role },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: "10d",
+            }
+        );
+
+        res.status(200).json({
+            accessToken,
+            data: user
         })
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ message: 'Login failed' });
     }
-
-    res.status(200).json({
-        user
-    })
 })
 
 
@@ -86,23 +66,18 @@ app.post('/signin', async (req, res) => {
 app.post('/signup', async (req, res) => {
     const { fullName, email, phoneNumber, password, role, token, ghUsername } = req.body
 
+
     try {
-        const user = await User.findOne({
-            where: { email }
-        })
+        // const user = await User.findOne({ email })
 
-        //  check credentials
-        if (user) {
-
-            console.log('user found', user);
-
-            return res.status(409).json({
-                success: 'false',
-                message: 'Email already in use'
-            })
-        }
-
-        console.log('No user found', user);
+        // console.log(user);
+        // //  check credentials
+        // if (user) {
+        //     return res.status(409).json({
+        //         success: 'false',
+        //         message: 'Email already in use'
+        //     })
+        // }
 
         const hashedPassword = await hash(password, 10)
 
@@ -126,14 +101,15 @@ app.post('/signup', async (req, res) => {
         console.error(error);
         res.status(400).json({
             success: false,
-            message: 'Error occured while creating account',
+            message: error.code === 11000 ? 'Email already in use' : 'Error occured while creating account',
         })
     }
 })
 
 // START SERVER & CONNECT TO DB
-app.listen(3000, () => {
-    console.log('Server running');
+const port = process.env.PORT || 3000
+app.listen(port, () => {
+    console.log('Server running on port : ', port);
 
     connectToMongoDB().then(() => {
         console.log('Connected to DB');
