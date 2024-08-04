@@ -66,8 +66,9 @@ router.post('/signup', async (req, res) => {
 router.post('/signin', async (req, res) => {
     const {email, password} = req.body
 
+    let userEmail = email.toLowerCase()
     try {
-        const user = await User.findOne({email})
+        const user = await User.findOne({email: userEmail})
 
         //  check credentials
         if (!user || !await bcrypt.compare(password, user.password)) {
